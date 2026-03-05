@@ -1,0 +1,6 @@
+{
+  "name": "Alfeedo",
+  "content_type": "integration",
+  "domains": ["alfeedo"],
+  "homeassistant": "2026.3.0"
+}
