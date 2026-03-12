@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from anyio import Path
 from homeassistant.const import CONF_HOST, Platform
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.loader import async_get_loaded_integration
+from homeassistant.loader import _LOGGER, async_get_loaded_integration
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.frontend import add_extra_js_url
 
@@ -31,6 +31,9 @@ PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BUTTON,
 ]
+
+URL_BASE = "/alfeedo/ui"
+CARD_FILENAME = "alfeedo-card.js"
 
 
 # https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry
@@ -54,20 +57,22 @@ async def async_setup_entry(
     )
 
     frontend_path = Path(__file__).parent / "card"
-    await hass.http.async_register_static_paths([
-        StaticPathConfig(
-            url_path="/alfeedo/ui",
-            path=str(frontend_path),
-            cache_headers=True
-        )
-    ])
-    add_extra_js_url(hass, "/alfeedo/ui/alfeedo-card.js")
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                url_path=URL_BASE, path=str(frontend_path), cache_headers=True
+            )
+        ]
+    )
+    add_extra_js_url(hass, f"{URL_BASE}/{CARD_FILENAME}")
 
     # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
     await coordinator.async_config_entry_first_refresh()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
+    await update_lovelace_resources(hass)
 
     return True
 
@@ -86,3 +91,24 @@ async def async_reload_entry(
 ) -> None:
     """Reload config entry."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def update_lovelace_resources(hass):
+    """Register the card as a resource if it's not already there."""
+    resources = hass.data.get("lovelace", {}).get("resources")
+
+    # If using YAML mode, resources will be None; we can only auto-register in UI mode
+    if resources is None:
+        return
+
+    url = f"{URL_BASE}/{CARD_FILENAME}"
+
+    # Check if already registered
+    if not any(res.get("url") == url for res in resources.async_items()):
+        _LOGGER.info("Registering Alfeedo card resource")
+        await resources.async_create_item(
+            {
+                "res_type": "module",
+                "url": url,
+            }
+        )

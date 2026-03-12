@@ -11,10 +11,10 @@
     }
   ],
   "dependencies": [
-    "zeroconf"
+    "zeroconf", "frontend", "lovelace", "http"
   ],
   "documentation": "https://github.com/mzanetti/ha-alfeedo",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/mzanetti/ha-alfeedo/issues",
-  "version": "0.1.0"
+  "version": "0.1.1"
 }
