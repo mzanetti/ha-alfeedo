@@ -12,10 +12,13 @@ from typing import TYPE_CHECKING
 
 from anyio import Path
 from homeassistant.const import CONF_HOST, Platform
+from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.loader import _LOGGER, async_get_loaded_integration
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.util import package
+from awesomeversion import AwesomeVersion
 
 from .api import AlfeedoApiClient
 from .const import DOMAIN, LOGGER
@@ -94,10 +97,15 @@ async def async_reload_entry(
 
 
 async def update_lovelace_resources(hass):
-    """Register the card as a resource if it's not already there."""
-    resources = hass.data.get("lovelace", {}).get("resources")
+    lovelace_data = hass.data.get("lovelace")
+    if not lovelace_data:
+        return
 
-    # If using YAML mode, resources will be None; we can only auto-register in UI mode
+    if is_new_lovelace():
+        resources = lovelace_data.resources
+    else:
+        resources = lovelace_data.get("resources")
+
     if resources is None:
         return
 
@@ -112,3 +120,7 @@ async def update_lovelace_resources(hass):
                 "url": url,
             }
         )
+
+
+def is_new_lovelace():
+    return AwesomeVersion(HA_VERSION) >= AwesomeVersion("2025.2.0")

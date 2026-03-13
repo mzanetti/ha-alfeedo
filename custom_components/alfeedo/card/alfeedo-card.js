@@ -65,8 +65,8 @@ template.innerHTML = `
           <div class="info-label" id="state_label">--</div>
           <div class="info-label" id="fill_label">--%</div>
           <div id="status_message" class="error-label"></div>
-          <ha-button class="meal" unelevated>Feed Meal</ha-button>
-          <ha-button class="snack" outlined>Feed Snack</ha-button>
+          <ha-button class="meal" unelevated>Dispense Meal</ha-button>
+          <ha-button class="snack" outlined>Dispense Snack</ha-button>
         </div>
       </div>
     </ha-card>
@@ -155,6 +155,9 @@ class AlfeedoCard extends HTMLElement {
     const num = Number(fill_level);
     const pct = Number.isFinite(num) ? Math.max(0, Math.min(100, Math.round(num))) : null;
     const errorState = stateObj.attributes.error_state;
+    const nextTimer = stateObj.attributes.next_timer;
+    const nextTimerMode = stateObj.attributes.next_timer_mode;
+
     if (pct !== null) {
       this._fillLabel.textContent = `${pct}%`;
       if (this._img) {
@@ -176,7 +179,11 @@ class AlfeedoCard extends HTMLElement {
 
     switch (errorState) {
       case "ok":
-        this._statusMsg.innerText = "";
+        if (nextTimerMode != "off") {
+          this._statusMsg.innerHTML = "Next timer: " + this.formatTime(nextTimer);
+        } else {
+          this._statusMsg.innerText = "";
+        }
         break;
       case "struggling":
         this._statusMsg.innerText = "The feeder is struggling"
@@ -194,6 +201,17 @@ class AlfeedoCard extends HTMLElement {
 
   getCardSize() {
     return 3;
+  }
+
+  formatTime(totalMinutes) {
+    const date = new Date();
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    date.setHours(hours, minutes, 0, 0);
+    return new Intl.DateTimeFormat(navigator.language, {
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(date);
   }
 }
 

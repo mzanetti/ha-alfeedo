@@ -21,11 +21,7 @@ if TYPE_CHECKING:
     from .data import AlfeedoConfigEntry
 
 ENTITY_STATE_DESCRIPTIONS = {
-    SensorEntityDescription(
-        key="state",
-        name="Feeder state",
-        icon="mdi:cat"
-    ),
+    SensorEntityDescription(key="state", name="Feeder state", icon="mdi:cat"),
 }
 
 ENTITY_FILL_LEVEL_DESCRIPTIONS = (
@@ -100,7 +96,9 @@ class AlfeedoStateSensor(AlfeedoEntity, SensorEntity):
         """Return the state attributes."""
         return {
             "fill_level": self.coordinator.data.get("fillLevel"),
-            "error_state": self.coordinator.data.get("errorState")
+            "error_state": self.coordinator.data.get("errorState"),
+            "next_timer": self.coordinator.data.get("nextTimer", {}).get("time"),
+            "next_timer_mode": self.coordinator.data.get("nextTimer", {}).get("mode"),
         }
 
 
