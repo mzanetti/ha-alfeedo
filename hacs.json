@@ -1,6 +1,15 @@
 {
   "name": "Alfeedo",
   "content_type": "integration",
-  "domains": ["alfeedo"],
-  "homeassistant": "2026.3.0"
+  "domains": [
+    "alfeedo"
+  ],
+  "homeassistant": "2026.3.0",
+  "render_readme": true,
+  "plugins": [
+    {
+      "path": "dist/alfeedo-card.js",
+      "filename": "alfeedo-card.js"
+    }
+  ]
 }

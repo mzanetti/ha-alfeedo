@@ -72,39 +72,67 @@ template.innerHTML = `
     </ha-card>
   `;
 
+// Register the card in Home Assistant's custom card registry early to
+// improve discoverability in the UI and reduce race conditions.
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "alfeedo-card",
+  name: "Alfeedo Card",
+  preview: true,
+  description: "A custom card to monitor and trigger your Alfeedo cat feeder.",
+});
+console.debug("alfeedo: customCards pushed");
+
 class AlfeedoCard extends HTMLElement {
   constructor() {
     super();
-    this._root = this.attachShadow({ mode: "open" });
-    this._root.appendChild(template.content.cloneNode(true));
+    this._root = null;
     this._hass = null;
     this._config = null;
     this._entitiesResolved = false;
+  }
 
-    this._statusMsg = this._root.getElementById('status_message');
-    this._fillLabel = this._root.getElementById('fill_label');
-    this._stateLabel = this._root.getElementById("state_label");
-    this._lastUpdated = this._root.getElementById("last_updated");
-    this._img = this._root.getElementById("feeder_img");
+  connectedCallback() {
+    this._ensureRoot();
+    if (this._config && this._hass) {
+      this.hass = this._hass; // trigger render with current hass
+    }
+  }
+
+  _ensureRoot() {
+    if (this._root) return;
+    this._root = this.attachShadow({ mode: "open" });
+    this._root.appendChild(template.content.cloneNode(true));
+  }
+
+  _el(id) {
+    if (!this._root) this._ensureRoot();
+    return this._root ? this._root.getElementById(id) : null;
   }
 
   setConfig(config) {
-    if (!config || !config.entity) {
-      throw new Error("Configuration for an alfeedo-card requires an entity");
+    console.debug("alfeedo-card: setConfig called", config);
+    if (!config) {
+      throw new Error("Invalid configuration");
     }
     this._config = config;
 
-    this._root.getElementById("title").textContent = this._config.title || "Alfeedo";
-    this._img = this._root.getElementById("feeder_img");
-    if (this._img) {
-      this._img.src = this._config.image || "/alfeedo/ui/img/feeder.png";
+    // Ensure DOM exists before trying to update elements
+    this._ensureRoot();
+
+    const titleEl = this._el("title");
+    if (titleEl) titleEl.textContent = this._config.title || "Alfeedo";
+
+    const imgEl = this._el("feeder_img");
+    if (imgEl) {
+      imgEl.src = this._config.image || "/hacsfiles/alfeedo-card/img/feeder.png";
     }
 
     const btnMeal = this._root.querySelector(".meal");
     const btnSnack = this._root.querySelector(".snack");
 
-    btnMeal.onclick = () => this._pressButton("meal");
-    btnSnack.onclick = () => this._pressButton("snack");
+    if (btnMeal) btnMeal.onclick = () => this._pressButton("meal");
+    if (btnSnack) btnSnack.onclick = () => this._pressButton("snack");
   }
 
   static getConfigElement() {
@@ -132,24 +160,29 @@ class AlfeedoCard extends HTMLElement {
   }
 
   set hass(hass) {
+    console.debug("************* render called")
     this._hass = hass;
     if (!this._config) return;
 
+    this._ensureRoot();
+
+    const stateLabel = this._el("state_label");
+    const statusMsg = this._el('status_message');
+    const fillLabel = this._el('fill_label');
+    const lastUpdated = this._el("last_updated");
+    const img = this._el("feeder_img");
+
     const entity = this._config.entity;
-    if (!entity) {
-      console.log("alfeedo-card: entity not configured.")
+    if (!entity || !hass.states[entity]) {
+      if (stateLabel) stateLabel.textContent = "No Entity";
       return;
     }
 
-    const stateObj = hass.states[entity];
-    if (!stateObj) {
-      this._lastUpdated.textContent = "";
-      return;
-    }
-
-
+    const stateObj = hass.states[entity]; // Define this BEFORE using it
     const value = stateObj.state;
-    if (this._stateLabel) this._stateLabel.textContent = value;
+
+    // 3. Update UI
+    if (stateLabel) stateLabel.textContent = value;
 
     const fill_level = stateObj.attributes.fill_level;
     const num = Number(fill_level);
@@ -158,45 +191,41 @@ class AlfeedoCard extends HTMLElement {
     const nextTimer = stateObj.attributes.next_timer;
     const nextTimerMode = stateObj.attributes.next_timer_mode;
 
-    if (pct !== null) {
-      this._fillLabel.textContent = `${pct}%`;
-      if (this._img) {
+    if (pct !== null && fillLabel) {
+      fillLabel.textContent = `${pct}%`;
+      if (img) {
         let fixedValue = pct;
         if (Math.round(pct) > 0) {
           fixedValue = Math.max(1, Math.round(pct / 10) * 10);
         }
-        const fillImg = "/alfeedo/ui/img/feeder transparent " + fixedValue + " " + errorState + ".png";
-        console.log("alfeedo-card: setting image to", fillImg);
-        this._img.src = fillImg;
+        const fillImg = `/hacsfiles/alfeedo-card/img/feeder transparent ${fixedValue} ${errorState}.png`;
+        img.src = fillImg;
       }
-    } else {
-      this._fillLabel.textContent = `${value}`;
-      if (this._img) {
-        const fillImg = "/alfeedo/ui/img/feeder.png";
-        this._img.src = this._config.image || fillImg;
+    } else if (fillLabel) {
+      fillLabel.textContent = `${value}`;
+      if (img) img.src = this._config.image || "/hacsfiles/alfeedo-card/img/feeder.png";
+    }
+
+    if (statusMsg) {
+      switch (errorState) {
+        case "ok":
+          statusMsg.className = "error-label";
+          statusMsg.innerHTML = (nextTimerMode !== "off") ? "Next timer: " + this.formatTime(nextTimer) : "";
+          break;
+        case "struggling":
+          statusMsg.innerText = "The feeder is struggling";
+          statusMsg.className = "error-label status-warning";
+          break;
+        case "jammed":
+          statusMsg.innerText = "The feeder may be jammed";
+          statusMsg.className = "error-label status-error";
+          break;
       }
     }
 
-    switch (errorState) {
-      case "ok":
-        if (nextTimerMode != "off") {
-          this._statusMsg.innerHTML = "Next timer: " + this.formatTime(nextTimer);
-        } else {
-          this._statusMsg.innerText = "";
-        }
-        break;
-      case "struggling":
-        this._statusMsg.innerText = "The feeder is struggling"
-        this._statusMsg.className = "error-label status-warning";
-        break;
-      case "jammed":
-        this._statusMsg.innerText = "The feeder may be jammed"
-        this._statusMsg.className = "error-label status-error";
-        break;
+    if (lastUpdated) {
+      lastUpdated.textContent = stateObj.last_updated ? new Date(stateObj.last_updated).toLocaleString() : "";
     }
-
-    this._lastUpdated.textContent = stateObj.last_updated ? new Date(stateObj.last_updated).toLocaleString() : "";
-
   }
 
   getCardSize() {
@@ -218,7 +247,8 @@ class AlfeedoCard extends HTMLElement {
 class AlfeedoCardEditor extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: "open" });
+    // Defer attaching shadow root to avoid early DOM initialization
+    // Shadow will be created in _render when needed
   }
 
   // 1. HA calls this when the config changes
@@ -235,6 +265,8 @@ class AlfeedoCardEditor extends HTMLElement {
 
   _render() {
     if (!this._hass || !this._config) return;
+
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
 
     if (!this._form) {
       this._form = document.createElement("ha-form");
@@ -292,11 +324,8 @@ if (!customElements.get("alfeedo-card")) {
 
 customElements.define("alfeedo-card-editor", AlfeedoCardEditor);
 
-// Make Lovelace aware of the custom card (helps the UI list it)
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "alfeedo-card",
-  name: "Alfeedo Card",
-  preview: true,
-  description: "A custom card to monitor and trigger your Alfeedo cat feeder.",
-});
+// Expose constructors globally and log when the custom element is defined.
+window.AlfeedoCard = AlfeedoCard;
+window.AlfeedoCardEditor = AlfeedoCardEditor;
+customElements.whenDefined('alfeedo-card').then(() => console.debug('alfeedo-card: whenDefined'));
+console.debug("alfeedo: registered");
